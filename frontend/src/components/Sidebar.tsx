@@ -70,8 +70,8 @@ const Sidebar: React.FC = () => {
     <div className="w-64 border-r border-zinc-800 bg-zinc-950 flex flex-col h-full sticky top-0 overflow-y-auto">
       <div className="p-6">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">C</div>
-          <h1 className="text-xl font-bold tracking-tight text-white">ContractFlow</h1>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">O</div>
+          <h1 className="text-xl font-bold tracking-tight text-white">OnboardFlow</h1>
         </div>
       </div>
 

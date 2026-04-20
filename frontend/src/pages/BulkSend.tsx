@@ -13,7 +13,6 @@ const BulkSend: React.FC = () => {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sendMode, setSendMode] = useState<'csv' | 'manual'>('manual')
-  const [apiMode, setApiMode] = useState<'sandbox' | 'production'>('sandbox')
   const [progress, setProgress] = useState<{ current: number, total: number, status: string } | null>(null)
   const [results, setResults] = useState<{ id: number, name: string, status: 'success' | 'error', error?: string }[]>([])
 
@@ -23,20 +22,10 @@ const BulkSend: React.FC = () => {
   const [messageTemplate, setMessageTemplate] = useState<string>('')
 
   useEffect(() => {
-    checkStatus()
     if (selectedTemplateId) {
       fetchDetails(selectedTemplateId)
     }
   }, [selectedTemplateId])
-
-  const checkStatus = async () => {
-    try {
-      const response = await pandaDocAPI.getStatus()
-      setApiMode(response.data.mode)
-    } catch (err) {
-      console.error('Failed to fetch API status')
-    }
-  }
 
   const fetchDetails = async (id: string) => {
     setError(null)
@@ -201,7 +190,7 @@ const BulkSend: React.FC = () => {
     const errorStr = err.response?.data?.error || err.message || 'Unknown error'
     
     if (errorStr.includes('outside of your organization')) {
-      return 'Sandbox Restriction: You can only send to emails with your own domain.'
+      return 'Domain Restriction: You can only send to emails with your own domain.'
     }
     if (errorStr.includes('throttled')) {
       // Try to extract the wait time if present
@@ -327,16 +316,6 @@ const BulkSend: React.FC = () => {
             <h1 className="text-3xl font-bold tracking-tight mb-2">Mass Contract Share</h1>
             <p className="text-zinc-500 text-sm">Send documents to multiple recipients at once</p>
           </header>
-
-            {apiMode === 'sandbox' && (
-              <div className="mb-6 p-4 bg-amber-900/10 border border-amber-500/20 rounded-xl flex gap-3">
-                <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                <div>
-                  <p className="text-amber-400 text-sm font-bold">Sandbox Mode Active</p>
-                  <p className="text-amber-400/60 text-xs">You can only send documents to email addresses with your own domain (e.g., if you use @company.com, recipients must also be @company.com).</p>
-                </div>
-              </div>
-            )}
 
             {error && (
               <div className="mb-6 p-4 bg-red-900/10 border border-red-500/20 rounded-xl text-red-400 text-sm">

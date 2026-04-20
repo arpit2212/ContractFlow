@@ -20,7 +20,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-black text-white">
       <div className="max-w-md w-full p-8 bg-zinc-900 rounded-xl border border-zinc-800 shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold tracking-tight mb-2">ContractFlow</h1>
+          <h1 className="text-4xl font-bold tracking-tight mb-2">OnboardFlow</h1>
           <p className="text-zinc-400">Production-ready document automation</p>
         </div>
 

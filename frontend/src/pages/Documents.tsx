@@ -14,7 +14,6 @@ const Documents: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const [filter, setFilter] = useState<string>('all')
   const [selectedDoc, setSelectedDoc] = useState<PandaDocDocument | null>(null)
-  const [showSandboxNotice, setShowSandboxNotice] = useState(true)
   const [connecting, setConnecting] = useState(false)
 
   // Handle OAuth callback
@@ -72,23 +71,6 @@ const Documents: React.FC = () => {
       <Sidebar />
       
       <main className="flex-1 flex flex-col overflow-y-auto bg-zinc-950">
-        {showSandboxNotice && (
-          <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 flex justify-between items-center group">
-            <div className="flex items-center gap-2 text-amber-400 text-sm font-medium">
-              <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-              🧪 Sandbox Mode — Documents include a SANDBOX watermark. Switch to production API when ready.
-            </div>
-            <button 
-              onClick={() => setShowSandboxNotice(false)}
-              className="text-amber-400/50 hover:text-amber-400 p-1 rounded-md hover:bg-amber-500/10 transition-all"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-
         <div className="max-w-7xl mx-auto w-full px-6 py-8 flex flex-col gap-8">
           {/* Header */}
           <div className="flex justify-between items-end">
