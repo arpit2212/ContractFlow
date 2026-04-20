@@ -83,6 +83,23 @@ func (ctrl *PandaDocController) CreateDocument(c *gin.Context) {
 	c.JSON(http.StatusCreated, doc)
 }
 
+func (ctrl *PandaDocController) UpdateDocument(c *gin.Context) {
+	id := c.Param("id")
+	var payload interface{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := ctrl.getID(c)
+	doc, err := ctrl.Service.UpdateDocument(c.Request.Context(), userID, id, payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, doc)
+}
+
 func (ctrl *PandaDocController) SendDocument(c *gin.Context) {
 	id := c.Param("id")
 	var payload interface{}
@@ -98,6 +115,38 @@ func (ctrl *PandaDocController) SendDocument(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, doc)
+}
+
+func (ctrl *PandaDocController) CreateAndSendDocument(c *gin.Context) {
+	var payload interface{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := ctrl.getID(c)
+	doc, err := ctrl.Service.CreateAndSendDocument(c.Request.Context(), userID, payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, doc)
+}
+
+func (ctrl *PandaDocController) BulkCreateAndSendDocuments(c *gin.Context) {
+	var payloads []interface{}
+	if err := c.ShouldBindJSON(&payloads); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := ctrl.getID(c)
+	results, err := ctrl.Service.BulkCreateAndSendDocuments(c.Request.Context(), userID, payloads)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, results)
 }
 
 func (ctrl *PandaDocController) GetAnalytics(c *gin.Context) {

@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Documents from './pages/Documents'
 import SendContract from './pages/SendContract'
+import BulkSend from './pages/BulkSend'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, loading } = useAuth()
@@ -50,6 +51,14 @@ function App() {
           element={
             <ProtectedRoute>
               <SendContract />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bulk-send"
+          element={
+            <ProtectedRoute>
+              <BulkSend />
             </ProtectedRoute>
           }
         />

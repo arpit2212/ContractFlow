@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 
 const SendContract: React.FC = () => {
   const navigate = useNavigate()
-  const { templates, loading: templatesLoading, error: templatesError } = usePandaDocTemplates()
+  const { templates, loading: templatesLoading } = usePandaDocTemplates()
   
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [templateDetails, setTemplateDetails] = useState<any>(null)
@@ -78,8 +78,13 @@ const SendContract: React.FC = () => {
     setError(null)
 
     try {
-      const createPayload = {
-        name: `${templateDetails.name} - ${new Date().toLocaleDateString()}`,
+      // Find the first recipient's name to use as the document name
+      const firstRecipient = Object.values(recipients)[0]
+      const recipientName = firstRecipient ? `${firstRecipient.first_name} ${firstRecipient.last_name}`.trim() : ''
+      const docName = recipientName ? `${recipientName} - Contract` : `Contract - ${new Date().toLocaleDateString()}`
+
+      const payload = {
+        name: docName,
         template_uuid: selectedTemplateId,
         recipients: Object.entries(recipients).map(([role, data]) => ({
           ...data,
@@ -89,19 +94,13 @@ const SendContract: React.FC = () => {
           name,
           value
         })),
-        autonumbering_sequence_name_or_id: templateDetails.autonumbering_sequence_name_or_id
+        autonumbering_sequence_name_or_id: templateDetails.autonumbering_sequence_name_or_id,
+        subject,
+        message
       }
 
-      // 1. Create the document
-      const createResponse = await pandaDocAPI.createDocument(createPayload)
-      const documentId = createResponse.data.id
-
-      // 2. Send the document with custom subject and message
-      await pandaDocAPI.sendDocument(documentId, {
-        subject,
-        message,
-        silent: false // Ensures the email is actually sent
-      })
+      // Single call to create and send (backend handles polling for draft status)
+      await pandaDocAPI.createAndSendDocument(payload)
 
       navigate('/documents')
     } catch (err: any) {

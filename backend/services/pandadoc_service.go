@@ -31,7 +31,10 @@ type PandaDocServiceInterface interface {
 	GetTemplates(ctx context.Context, userID string) ([]interface{}, error)
 	GetTemplateDetails(ctx context.Context, userID, id string) (interface{}, error)
 	CreateDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error)
+	UpdateDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error)
 	SendDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error)
+	CreateAndSendDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error)
+	BulkCreateAndSendDocuments(ctx context.Context, userID string, payloads []interface{}) ([]interface{}, error)
 	GetAnalytics(ctx context.Context, userID string) (*PandaDocAnalytics, error)
 	ExchangeCode(ctx context.Context, userID, code string) (*models.PandaDocAuth, error)
 	GetAuthURL() string
@@ -138,12 +141,15 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, method, path st
 	log.Printf("PandaDoc Request: %s %s (User: %s)", method, fullURL, userID)
 
 	var bodyReader io.Reader
+	var bodyCopy []byte
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		var err error
+		bodyCopy, err = json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		bodyReader = bytes.NewBuffer(jsonBody)
+		log.Printf("PandaDoc Request Body: %s", string(bodyCopy))
+		bodyReader = bytes.NewBuffer(bodyCopy)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
@@ -177,9 +183,9 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, method, path st
 	log.Printf("PandaDoc Response: %d %s", resp.StatusCode, resp.Status)
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("PandaDoc Error Body: %s", string(body))
-		return fmt.Errorf("pandadoc api error (status %d): %s", resp.StatusCode, string(body))
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("PandaDoc API Error Status: %d, Body: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("PandaDoc API Error: %s", string(respBody))
 	}
 
 	return json.NewDecoder(resp.Body).Decode(result)
@@ -239,10 +245,104 @@ func (s *pandaDocService) CreateDocument(ctx context.Context, userID string, pay
 	return result, err
 }
 
+func (s *pandaDocService) UpdateDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error) {
+	var result interface{}
+	err := s.doRequest(ctx, userID, http.MethodPatch, "/documents/"+id, payload, &result)
+	return result, err
+}
+
 func (s *pandaDocService) SendDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error) {
+	// 1. Wait for document to reach "document.draft" status
+	// PandaDoc takes a few seconds to process a document after creation
+	maxRetries := 10
+	retryInterval := 2 * time.Second
+
+	var status string
+	for i := 0; i < maxRetries; i++ {
+		var doc struct {
+			Status string `json:"status"`
+		}
+		err := s.doRequest(ctx, userID, http.MethodGet, "/documents/"+id, nil, &doc)
+		if err == nil {
+			status = doc.Status
+			log.Printf("Document %s status: %s (attempt %d)", id, status, i+1)
+			if status == "document.draft" {
+				break
+			}
+		} else {
+			log.Printf("Error checking document status: %v", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retryInterval):
+		}
+	}
+
+	if status != "document.draft" {
+		return nil, fmt.Errorf("document is not in draft status (current status: %s), cannot send", status)
+	}
+
+	// 2. Send the document
 	var result interface{}
 	err := s.doRequest(ctx, userID, http.MethodPost, "/documents/"+id+"/send", payload, &result)
 	return result, err
+}
+
+func (s *pandaDocService) CreateAndSendDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error) {
+	// Extract email settings from payload
+	var data map[string]interface{}
+	payloadBytes, _ := json.Marshal(payload)
+	json.Unmarshal(payloadBytes, &data)
+
+	// Separate create payload and send settings
+	sendSettings := map[string]interface{}{
+		"silent": false,
+	}
+	if msg, ok := data["message"]; ok {
+		sendSettings["message"] = msg
+		delete(data, "message")
+	}
+	if subj, ok := data["subject"]; ok {
+		sendSettings["subject"] = subj
+		delete(data, "subject")
+	}
+
+	log.Printf("Creating PandaDoc document with name: %v", data["name"])
+
+	// 1. Create the document
+	var createResult struct {
+		ID string `json:"id"`
+	}
+	err := s.doRequest(ctx, userID, http.MethodPost, "/documents", data, &createResult)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Send the document (using our existing SendDocument which handles polling)
+	return s.SendDocument(ctx, userID, createResult.ID, sendSettings)
+}
+
+func (s *pandaDocService) BulkCreateAndSendDocuments(ctx context.Context, userID string, payloads []interface{}) ([]interface{}, error) {
+	results := make([]interface{}, 0, len(payloads))
+
+	// Use a wait group or a simpler loop for now to avoid hitting rate limits too fast
+	// In production, you'd want a proper queue and rate limiter
+	for _, payload := range payloads {
+		res, err := s.CreateAndSendDocument(ctx, userID, payload)
+		if err != nil {
+			log.Printf("Bulk send error for one item: %v", err)
+			results = append(results, map[string]interface{}{"error": err.Error(), "payload": payload})
+		} else {
+			results = append(results, res)
+		}
+
+		// Small delay between documents to respect API rate limits (PandaDoc: 100/min for enterprise, 20/min for others)
+		time.Sleep(1 * time.Second)
+	}
+
+	return results, nil
 }
 
 func (s *pandaDocService) GetAnalytics(ctx context.Context, userID string) (*PandaDocAnalytics, error) {

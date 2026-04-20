@@ -31,12 +31,19 @@ func SetupRouter() *gin.Engine {
 		// PandaDoc routes (made public for testing as requested)
 		pandadoc := api.Group("/pandadoc")
 		{
+			// Specific POST routes first to avoid conflicts
+			pandadoc.POST("/documents/bulk-send", pandaDocController.BulkCreateAndSendDocuments)
+			pandadoc.POST("/documents/create-and-send", pandaDocController.CreateAndSendDocument)
+
 			pandadoc.GET("/documents", pandaDocController.GetDocuments)
 			pandadoc.GET("/documents/:id", pandaDocController.GetDocumentDetails)
 			pandadoc.GET("/templates", pandaDocController.GetTemplates)
 			pandadoc.GET("/templates/:id/details", pandaDocController.GetTemplateDetails)
+
 			pandadoc.POST("/documents", pandaDocController.CreateDocument)
+			pandadoc.PATCH("/documents/:id", pandaDocController.UpdateDocument)
 			pandadoc.POST("/documents/:id/send", pandaDocController.SendDocument)
+
 			pandadoc.GET("/analytics", pandaDocController.GetAnalytics)
 			pandadoc.GET("/connect", pandaDocController.Connect)
 			pandadoc.GET("/callback", pandaDocController.Callback)

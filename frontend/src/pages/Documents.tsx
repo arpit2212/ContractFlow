@@ -265,13 +265,13 @@ const Documents: React.FC = () => {
                   <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Created By</h3>
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-900 border border-zinc-800">
                     <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-zinc-500">
-                      {selectedDoc.created_by.email[0].toUpperCase()}
+                      {selectedDoc.created_by?.email?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-white">
-                        {selectedDoc.created_by.first_name} {selectedDoc.created_by.last_name}
+                        {selectedDoc.created_by?.first_name || 'Unknown'} {selectedDoc.created_by?.last_name || ''}
                       </p>
-                      <p className="text-xs text-zinc-500">{selectedDoc.created_by.email}</p>
+                      <p className="text-xs text-zinc-500">{selectedDoc.created_by?.email || 'No email'}</p>
                     </div>
                   </div>
                 </div>
@@ -279,7 +279,7 @@ const Documents: React.FC = () => {
                 <div>
                   <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Recipients</h3>
                   <div className="space-y-2">
-                    {selectedDoc.recipients.map((recipient, i) => (
+                    {selectedDoc.recipients?.map((recipient: any, i: number) => (
                       <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-zinc-900 border border-zinc-800 group hover:border-zinc-700 transition-all">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-white truncate">
