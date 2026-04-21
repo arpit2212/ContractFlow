@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -58,6 +59,25 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// Check 30-minute session expiry
+		// Supabase JWTs have "iat" (issued at) claim
+		if iat, ok := claims["iat"].(float64); ok {
+			issuedAt := time.Unix(int64(iat), 0)
+			sessionAge := time.Since(issuedAt)
+			maxSessionAge := 30 * time.Minute
+
+			if sessionAge > maxSessionAge {
+				log.Printf("AuthMiddleware: Session expired. Age: %v, Max: %v", sessionAge, maxSessionAge)
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":        "Session expired",
+					"session_age": sessionAge.Round(time.Second).String(),
+					"max_age":     maxSessionAge.String(),
+				})
+				c.Abort()
+				return
+			}
+		}
+
 		userID, ok := claims["sub"].(string)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in token"})
@@ -65,7 +85,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Attach user_id to context
 		c.Set("user_id", userID)
 		c.Next()
 	}

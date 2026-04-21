@@ -8,12 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
-
-	"github.com/user/ContractFlow/backend/config"
-	"github.com/user/ContractFlow/backend/models"
 )
 
 type PandaDocAnalytics struct {
@@ -26,24 +22,21 @@ type PandaDocAnalytics struct {
 }
 
 type PandaDocServiceInterface interface {
-	GetDocuments(ctx context.Context, userID string) ([]interface{}, error)
-	GetDocumentDetails(ctx context.Context, userID, id string) (interface{}, error)
-	GetTemplates(ctx context.Context, userID string) ([]interface{}, error)
-	GetTemplateDetails(ctx context.Context, userID, id string) (interface{}, error)
-	CreateDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error)
-	UpdateDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error)
-	SendDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error)
-	CreateAndSendDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error)
-	BulkCreateAndSendDocuments(ctx context.Context, userID string, payloads []interface{}) ([]interface{}, error)
-	GetAnalytics(ctx context.Context, userID string) (*PandaDocAnalytics, error)
-	ExchangeCode(ctx context.Context, userID, code string) (*models.PandaDocAuth, error)
-	GetAuthURL() string
+	GetDocuments(ctx context.Context, userID, apiKey string) ([]interface{}, error)
+	GetDocumentDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error)
+	GetTemplates(ctx context.Context, userID, apiKey string) ([]interface{}, error)
+	GetTemplateDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error)
+	CreateDocument(ctx context.Context, userID, apiKey string, payload interface{}) (interface{}, error)
+	UpdateDocument(ctx context.Context, userID, apiKey, id string, payload interface{}) (interface{}, error)
+	SendDocument(ctx context.Context, userID, apiKey, id string, payload interface{}) (interface{}, error)
+	CreateAndSendDocument(ctx context.Context, userID, apiKey string, payload interface{}) (interface{}, error)
+	BulkCreateAndSendDocuments(ctx context.Context, userID, apiKey string, payloads []interface{}) ([]interface{}, error)
+	GetAnalytics(ctx context.Context, userID, apiKey string) (*PandaDocAnalytics, error)
 }
 
 type pandaDocService struct {
-	BaseURL    string
-	cache      sync.Map
-	tokenStore sync.Map // Temporary in-memory store: map[userID]*models.PandaDocAuth
+	BaseURL string
+	cache   sync.Map
 }
 
 type cacheItem struct {
@@ -77,66 +70,7 @@ func (s *pandaDocService) setToCache(key string, data interface{}) {
 	})
 }
 
-func (s *pandaDocService) GetAuthURL() string {
-	baseURL := "https://app.pandadoc.com/oauth2/authorize"
-	params := url.Values{}
-	params.Add("client_id", config.Env.PandaDocClientID)
-	params.Add("redirect_uri", config.Env.PandaDocRedirectURI)
-	params.Add("scope", "read+write")
-	params.Add("response_type", "code")
-	return fmt.Sprintf("%s?%s", baseURL, params.Encode())
-}
-
-func (s *pandaDocService) ExchangeCode(ctx context.Context, userID, code string) (*models.PandaDocAuth, error) {
-	tokenURL := "https://api.pandadoc.com/oauth2/access_token"
-	data := url.Values{}
-	data.Set("grant_type", "authorization_code")
-	data.Set("client_id", config.Env.PandaDocClientID)
-	data.Set("client_secret", config.Env.PandaDocClientSecret)
-	data.Set("code", code)
-	data.Set("scope", "read+write")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewBufferString(data.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("pandadoc oauth error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, err
-	}
-
-	auth := &models.PandaDocAuth{
-		UserID:       userID,
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
-	}
-
-	// Store token for this user
-	s.tokenStore.Store(userID, auth)
-
-	return auth, nil
-}
-
-func (s *pandaDocService) doRequest(ctx context.Context, userID, method, path string, body interface{}, result interface{}) error {
+func (s *pandaDocService) doRequest(ctx context.Context, userID, apiKey, method, path string, body interface{}, result interface{}) error {
 	fullURL := s.BaseURL + path
 	log.Printf("PandaDoc Request: %s %s (User: %s)", method, fullURL, userID)
 
@@ -157,17 +91,11 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, method, path st
 		return err
 	}
 
-	// 1. Check if user has an OAuth token
-	if authVal, ok := s.tokenStore.Load(userID); ok {
-		auth := authVal.(*models.PandaDocAuth)
-		log.Printf("Using OAuth Bearer token for user %s", userID)
-		req.Header.Set("Authorization", "Bearer "+auth.AccessToken)
-	} else if config.Env.PandaDocAPIKey != "" {
-		// 2. Fallback to Sandbox API Key
-		log.Printf("Using API-Key fallback for user %s", userID)
-		req.Header.Set("Authorization", "API-Key "+config.Env.PandaDocAPIKey)
+	if apiKey != "" {
+		log.Printf("Using user-provided API Key for user %s", userID)
+		req.Header.Set("Authorization", "API-Key "+apiKey)
 	} else {
-		log.Printf("WARNING: No authentication found for user %s", userID)
+		log.Printf("WARNING: No API key provided for user %s", userID)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -191,7 +119,7 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, method, path st
 	return json.NewDecoder(resp.Body).Decode(result)
 }
 
-func (s *pandaDocService) GetDocuments(ctx context.Context, userID string) ([]interface{}, error) {
+func (s *pandaDocService) GetDocuments(ctx context.Context, userID, apiKey string) ([]interface{}, error) {
 	cacheKey := fmt.Sprintf("docs_%s", userID)
 	if data, ok := s.getFromCache(cacheKey); ok {
 		return data.([]interface{}), nil
@@ -200,7 +128,7 @@ func (s *pandaDocService) GetDocuments(ctx context.Context, userID string) ([]in
 	var response struct {
 		Results []interface{} `json:"results"`
 	}
-	err := s.doRequest(ctx, userID, http.MethodGet, "/documents?count=50&page=1", nil, &response)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents?count=50&page=1", nil, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -209,13 +137,13 @@ func (s *pandaDocService) GetDocuments(ctx context.Context, userID string) ([]in
 	return response.Results, nil
 }
 
-func (s *pandaDocService) GetDocumentDetails(ctx context.Context, userID, id string) (interface{}, error) {
+func (s *pandaDocService) GetDocumentDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, http.MethodGet, "/documents/"+id, nil, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id, nil, &result)
 	return result, err
 }
 
-func (s *pandaDocService) GetTemplates(ctx context.Context, userID string) ([]interface{}, error) {
+func (s *pandaDocService) GetTemplates(ctx context.Context, userID, apiKey string) ([]interface{}, error) {
 	cacheKey := fmt.Sprintf("templates_%s", userID)
 	if data, ok := s.getFromCache(cacheKey); ok {
 		return data.([]interface{}), nil
@@ -224,7 +152,7 @@ func (s *pandaDocService) GetTemplates(ctx context.Context, userID string) ([]in
 	var response struct {
 		Results []interface{} `json:"results"`
 	}
-	err := s.doRequest(ctx, userID, http.MethodGet, "/templates", nil, &response)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/templates", nil, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -233,27 +161,25 @@ func (s *pandaDocService) GetTemplates(ctx context.Context, userID string) ([]in
 	return response.Results, nil
 }
 
-func (s *pandaDocService) GetTemplateDetails(ctx context.Context, userID, id string) (interface{}, error) {
+func (s *pandaDocService) GetTemplateDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, http.MethodGet, "/templates/"+id+"/details", nil, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/templates/"+id+"/details", nil, &result)
 	return result, err
 }
 
-func (s *pandaDocService) CreateDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error) {
+func (s *pandaDocService) CreateDocument(ctx context.Context, userID, apiKey string, payload interface{}) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, http.MethodPost, "/documents", payload, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodPost, "/documents", payload, &result)
 	return result, err
 }
 
-func (s *pandaDocService) UpdateDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error) {
+func (s *pandaDocService) UpdateDocument(ctx context.Context, userID, apiKey, id string, payload interface{}) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, http.MethodPatch, "/documents/"+id, payload, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodPatch, "/documents/"+id, payload, &result)
 	return result, err
 }
 
-func (s *pandaDocService) SendDocument(ctx context.Context, userID, id string, payload interface{}) (interface{}, error) {
-	// 1. Wait for document to reach "document.draft" status
-	// PandaDoc takes a few seconds to process a document after creation
+func (s *pandaDocService) SendDocument(ctx context.Context, userID, apiKey, id string, payload interface{}) (interface{}, error) {
 	maxRetries := 10
 	retryInterval := 2 * time.Second
 
@@ -262,7 +188,7 @@ func (s *pandaDocService) SendDocument(ctx context.Context, userID, id string, p
 		var doc struct {
 			Status string `json:"status"`
 		}
-		err := s.doRequest(ctx, userID, http.MethodGet, "/documents/"+id, nil, &doc)
+		err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id, nil, &doc)
 		if err == nil {
 			status = doc.Status
 			log.Printf("Document %s status: %s (attempt %d)", id, status, i+1)
@@ -284,19 +210,16 @@ func (s *pandaDocService) SendDocument(ctx context.Context, userID, id string, p
 		return nil, fmt.Errorf("document is not in draft status (current status: %s), cannot send", status)
 	}
 
-	// 2. Send the document
 	var result interface{}
-	err := s.doRequest(ctx, userID, http.MethodPost, "/documents/"+id+"/send", payload, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodPost, "/documents/"+id+"/send", payload, &result)
 	return result, err
 }
 
-func (s *pandaDocService) CreateAndSendDocument(ctx context.Context, userID string, payload interface{}) (interface{}, error) {
-	// Extract email settings from payload
+func (s *pandaDocService) CreateAndSendDocument(ctx context.Context, userID, apiKey string, payload interface{}) (interface{}, error) {
 	var data map[string]interface{}
 	payloadBytes, _ := json.Marshal(payload)
 	json.Unmarshal(payloadBytes, &data)
 
-	// Separate create payload and send settings
 	sendSettings := map[string]interface{}{
 		"silent": false,
 	}
@@ -311,26 +234,22 @@ func (s *pandaDocService) CreateAndSendDocument(ctx context.Context, userID stri
 
 	log.Printf("Creating PandaDoc document with name: %v", data["name"])
 
-	// 1. Create the document
 	var createResult struct {
 		ID string `json:"id"`
 	}
-	err := s.doRequest(ctx, userID, http.MethodPost, "/documents", data, &createResult)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodPost, "/documents", data, &createResult)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Send the document (using our existing SendDocument which handles polling)
-	return s.SendDocument(ctx, userID, createResult.ID, sendSettings)
+	return s.SendDocument(ctx, userID, apiKey, createResult.ID, sendSettings)
 }
 
-func (s *pandaDocService) BulkCreateAndSendDocuments(ctx context.Context, userID string, payloads []interface{}) ([]interface{}, error) {
+func (s *pandaDocService) BulkCreateAndSendDocuments(ctx context.Context, userID, apiKey string, payloads []interface{}) ([]interface{}, error) {
 	results := make([]interface{}, 0, len(payloads))
 
-	// Use a wait group or a simpler loop for now to avoid hitting rate limits too fast
-	// In production, you'd want a proper queue and rate limiter
 	for _, payload := range payloads {
-		res, err := s.CreateAndSendDocument(ctx, userID, payload)
+		res, err := s.CreateAndSendDocument(ctx, userID, apiKey, payload)
 		if err != nil {
 			log.Printf("Bulk send error for one item: %v", err)
 			results = append(results, map[string]interface{}{"error": err.Error(), "payload": payload})
@@ -338,15 +257,14 @@ func (s *pandaDocService) BulkCreateAndSendDocuments(ctx context.Context, userID
 			results = append(results, res)
 		}
 
-		// Small delay between documents to respect API rate limits (PandaDoc: 100/min for enterprise, 20/min for others)
 		time.Sleep(1 * time.Second)
 	}
 
 	return results, nil
 }
 
-func (s *pandaDocService) GetAnalytics(ctx context.Context, userID string) (*PandaDocAnalytics, error) {
-	docs, err := s.GetDocuments(ctx, userID)
+func (s *pandaDocService) GetAnalytics(ctx context.Context, userID, apiKey string) (*PandaDocAnalytics, error) {
+	docs, err := s.GetDocuments(ctx, userID, apiKey)
 	if err != nil {
 		return nil, err
 	}

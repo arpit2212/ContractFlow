@@ -12,6 +12,19 @@ export const signInWithGoogle = async () => {
 }
 
 export const signOut = async () => {
+  // Clear local sensitive data
+  localStorage.removeItem('pandadoc_api_key')
+  
+  // Also clear any cached results or progress if they exist
+  const keysToRemove = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && (key.includes('pandadoc') || key.includes('bulk_send'))) {
+      keysToRemove.push(key)
+    }
+  }
+  keysToRemove.forEach(key => localStorage.removeItem(key))
+
   const { error } = await supabase.auth.signOut()
   if (error) throw error
 }

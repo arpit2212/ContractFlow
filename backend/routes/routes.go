@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/user/ContractFlow/backend/controllers"
 	"github.com/user/ContractFlow/backend/middleware"
@@ -10,14 +9,26 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
-	// Logger middleware to see incoming requests
 	r.Use(gin.Logger())
 
-	// CORS configuration
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:5173"}
-	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
+	// Manual CORS middleware for absolute control
+	r.Use(func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		if origin == "http://localhost:5173" || origin == "http://localhost:3000" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-PandaDoc-Api-Key, x-pandadoc-api-key")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
 
 	authController := controllers.NewAuthController()
 	contractController := controllers.NewContractController()
@@ -25,13 +36,10 @@ func SetupRouter() *gin.Engine {
 
 	api := r.Group("/api")
 	{
-		// Public routes
 		api.GET("/pandadoc/status", pandaDocController.GetStatus)
 
-		// PandaDoc routes (made public for testing as requested)
 		pandadoc := api.Group("/pandadoc")
 		{
-			// Specific POST routes first to avoid conflicts
 			pandadoc.POST("/documents/bulk-send", pandaDocController.BulkCreateAndSendDocuments)
 			pandadoc.POST("/documents/create-and-send", pandaDocController.CreateAndSendDocument)
 
@@ -45,11 +53,8 @@ func SetupRouter() *gin.Engine {
 			pandadoc.POST("/documents/:id/send", pandaDocController.SendDocument)
 
 			pandadoc.GET("/analytics", pandaDocController.GetAnalytics)
-			pandadoc.GET("/connect", pandaDocController.Connect)
-			pandadoc.GET("/callback", pandaDocController.Callback)
 		}
 
-		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware())
 		{

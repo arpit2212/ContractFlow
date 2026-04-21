@@ -5,7 +5,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api',
 })
 
-// Attach Supabase JWT to every request
 api.interceptors.request.use(async (config) => {
   const { data: { session } } = await supabase.auth.getSession()
   if (session?.access_token) {
@@ -13,8 +12,37 @@ api.interceptors.request.use(async (config) => {
   } else {
     console.warn('API Interceptor: No active session found')
   }
+  const apiKey = localStorage.getItem('pandadoc_api_key')
+  if (apiKey) {
+    config.headers['X-PandaDoc-Api-Key'] = apiKey
+  }
   return config
 })
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Session expired or invalid - clear sensitive data
+      localStorage.removeItem('pandadoc_api_key')
+      
+      // Clear any other PandaDoc related keys
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (key.includes('pandadoc') || key.includes('bulk_send'))) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+      
+      // Optionally redirect to login or let the Auth provider handle it
+      await supabase.auth.signOut()
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
 
 const PANDADOC_BASE = '/pandadoc'
 
