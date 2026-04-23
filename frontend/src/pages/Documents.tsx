@@ -4,8 +4,24 @@ import Sidebar from '../components/Sidebar'
 import { usePandaDocDocuments, usePandaDocAnalytics } from '../hooks/usePandaDoc'
 import { pandaDocAPI } from '../services/api'
 import DocumentsTable from '../components/DocumentsTable'
-import StatusBadge from '../components/StatusBadge'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Search, 
+  Filter, 
+  Plus, 
+  RefreshCw, 
+  Link as LinkIcon, 
+  ChevronRight,
+  FileText,
+  AlertCircle,
+  X,
+  ExternalLink,
+  Calendar,
+  Mail,
+  User
+} from 'lucide-react'
 import type { PandaDocDocument } from '../types/pandadoc'
+import StatusBadge from '../components/StatusBadge'
 
 const Documents: React.FC = () => {
   const { documents, loading: docsLoading, error: docsError, refetch: refetchDocs } = usePandaDocDocuments()
@@ -13,19 +29,39 @@ const Documents: React.FC = () => {
   
   const [searchParams, setSearchParams] = useSearchParams()
   const [filter, setFilter] = useState<string>('all')
-  const [selectedDoc, setSelectedDoc] = useState<PandaDocDocument | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [connecting, setConnecting] = useState(false)
+  const [selectedDoc, setSelectedDoc] = useState<PandaDocDocument | null>(null)
+  const [loadingSelected, setLoadingSelected] = useState(false)
 
-  // Handle OAuth callback
+  // Helper to safely get recipients array
+  const getRecipients = (doc: any): PandaDocRecipient[] => {
+    if (!doc) return []
+    if (Array.isArray(doc.recipients)) return doc.recipients
+    if (doc.recipients && typeof doc.recipients === 'object') return [doc.recipients as PandaDocRecipient]
+    if (Array.isArray(doc.contacts)) return doc.contacts
+    return []
+  }
+
+  const handleViewDetails = async (doc: PandaDocDocument) => {
+    setSelectedDoc(doc)
+    setLoadingSelected(true)
+    try {
+      const response = await pandaDocAPI.getDocumentDetails(doc.id)
+      setSelectedDoc(response.data)
+    } catch (err) {
+      console.error('Failed to fetch document details:', err)
+    } finally {
+      setLoadingSelected(false)
+    }
+  }
   useEffect(() => {
     const code = searchParams.get('code')
     if (code) {
       const handleCallback = async () => {
         try {
           await pandaDocAPI.callback(code)
-          // Clear search params
           setSearchParams({})
-          // Refresh data
           refetchDocs()
           refetchAnalytics()
         } catch (err) {
@@ -50,269 +86,284 @@ const Documents: React.FC = () => {
   }
 
   const filteredDocuments = useMemo(() => {
-    if (filter === 'all') return documents
-    return documents.filter((doc) => doc.status === `document.${filter}`)
-  }, [documents, filter])
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+    let filtered = documents
+    if (filter !== 'all') {
+      filtered = filtered.filter((doc) => doc.status === `document.${filter}`)
+    }
+    if (searchQuery) {
+      filtered = filtered.filter((doc) => 
+        doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
+    return filtered
+  }, [documents, filter, searchQuery])
 
   const filters = ['all', 'draft', 'sent', 'viewed', 'completed', 'declined']
 
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
+    <div className="flex h-screen bg-[#F9FAFB] text-gray-900 overflow-hidden font-sans">
       <Sidebar />
       
-      <main className="flex-1 flex flex-col overflow-y-auto bg-zinc-950">
-        <div className="max-w-7xl mx-auto w-full px-6 py-8 flex flex-col gap-8">
-          {/* Header */}
-          <div className="flex justify-between items-end">
+      <main className="flex-1 flex flex-col overflow-y-auto">
+        <div className="max-w-7xl mx-auto w-full px-8 py-8 space-y-6">
+          {/* Page Title Section */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight mb-2">Documents</h1>
-              <p className="text-zinc-500 text-sm">Manage and track your PandaDoc agreements</p>
+              <h1 className="text-2xl font-bold text-gray-900">Document Library</h1>
+              <p className="text-gray-500 text-sm font-medium">Manage and track your PandaDoc agreements in real-time.</p>
             </div>
-            <div className="flex gap-3">
+            
+            <div className="flex items-center gap-3">
               <button 
-                onClick={handleConnect}
-                disabled={connecting}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-sm font-semibold rounded-lg transition-all active:scale-95"
+                onClick={() => {
+                  refetchDocs()
+                  refetchAnalytics()
+                }}
+                className="p-2 text-gray-400 hover:text-[#1D9E75] hover:bg-gray-50 rounded-lg transition-all"
+                title="Refresh Data"
               >
-                {connecting ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                )}
-                {connecting ? 'Connecting...' : 'Connect PandaDoc'}
+                <RefreshCw className={`w-5 h-5 ${docsLoading ? 'animate-spin' : ''}`} />
               </button>
-              <button 
-                onClick={() => refetchDocs()}
-                className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold rounded-lg transition-all active:scale-95"
-              >
-                <svg className={`w-4 h-4 ${docsLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh
-              </button>
+              <div className="px-3 py-1.5 bg-[#E1F5EE] text-[#1D9E75] rounded-full text-xs font-bold border border-[#1D9E75]/10">
+                {documents.length} Total
+              </div>
             </div>
           </div>
 
-          {/* Analytics Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {analyticsLoading ? (
-              [...Array(5)].map((_, i) => (
-                <div key={i} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl animate-pulse">
-                  <div className="h-3 w-16 bg-zinc-800 rounded mb-3" />
-                  <div className="h-8 w-10 bg-zinc-800 rounded" />
-                </div>
-              ))
-            ) : analyticsError ? (
-              <div className="col-span-5 bg-red-900/10 border border-red-500/20 p-4 rounded-xl text-red-400 text-sm">
-                Error loading analytics: {analyticsError}
-              </div>
-            ) : (
-              <>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl group hover:border-blue-500/50 transition-colors shadow-sm">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Total</h3>
-                  <p className="text-3xl font-bold text-white group-hover:text-blue-400 transition-colors">{analytics?.total}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl group hover:border-amber-500/50 transition-colors shadow-sm">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Sent</h3>
-                  <p className="text-3xl font-bold text-white group-hover:text-amber-400 transition-colors">{analytics?.sent}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl group hover:border-purple-500/50 transition-colors shadow-sm">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Viewed</h3>
-                  <p className="text-3xl font-bold text-white group-hover:text-purple-400 transition-colors">{analytics?.viewed}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl group hover:border-emerald-500/50 transition-colors shadow-sm">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Completed</h3>
-                  <p className="text-3xl font-bold text-white group-hover:text-emerald-400 transition-colors">{analytics?.completed}</p>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl group hover:border-red-500/50 transition-colors shadow-sm">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Declined</h3>
-                  <p className="text-3xl font-bold text-white group-hover:text-red-400 transition-colors">{analytics?.declined}</p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Main Content */}
-          <div className="flex flex-col gap-6">
-            {/* Filter Bar */}
-            <div className="flex gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-xl w-fit">
-              {filters.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${
-                    filter === f 
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
+          {/* Search and Filters Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Search documents by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-11 pl-11 pr-4 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-all"
+              />
             </div>
-
-            {/* Error Banner */}
-            {docsError && (
-              <div className="bg-red-900/10 border border-red-500/20 p-4 rounded-xl flex items-center justify-between group">
-                <div className="flex items-center gap-3">
-                  <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-red-400 text-sm font-medium">{docsError}</span>
-                </div>
-                <button 
-                  onClick={() => refetchDocs()}
-                  className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold rounded-lg transition-all"
-                >
-                  Retry
-                </button>
+            
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-100 overflow-x-auto no-scrollbar">
+                {filters.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold capitalize transition-all whitespace-nowrap ${
+                      filter === f 
+                        ? 'bg-white text-[#1D9E75] shadow-sm' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
               </div>
-            )}
-
-            {/* Table */}
-            <DocumentsTable 
-              documents={filteredDocuments} 
-              loading={docsLoading} 
-              onViewDetails={setSelectedDoc}
-            />
+            </div>
           </div>
+
+          {/* Documents Table Section */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={filter + searchQuery}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {docsError ? (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-12 text-center">
+                  <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">Failed to load documents</h3>
+                  <p className="text-gray-500 max-w-md mx-auto mb-6">There was an error connecting to PandaDoc. Please check your API configuration or try again.</p>
+                  <button 
+                    onClick={() => refetchDocs()}
+                    className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all shadow-sm"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : filteredDocuments.length === 0 ? (
+                <div className="bg-white border border-gray-100 rounded-2xl p-20 text-center shadow-sm">
+                  <div className="w-20 h-20 bg-gray-50 text-gray-300 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <FileText className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No documents found</h3>
+                  <p className="text-gray-500 max-w-sm mx-auto mb-8 font-medium">
+                    {searchQuery && `We couldn't find any documents matching "${searchQuery}"`}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                  <DocumentsTable 
+                    documents={filteredDocuments} 
+                    loading={docsLoading} 
+                    onViewDetails={handleViewDetails}
+                  />
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
 
-      {/* Slide-over Panel */}
-      {selectedDoc && (
-        <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
-            onClick={() => setSelectedDoc(null)}
-          />
-          
-          {/* Panel */}
-          <div className="relative w-full max-w-md h-full bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-out translate-x-0">
-            {/* Header */}
-            <div className="px-6 py-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50 backdrop-blur-md">
-              <h2 className="text-xl font-bold tracking-tight text-white">Document Details</h2>
-              <button 
-                onClick={() => setSelectedDoc(null)}
-                className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              {/* Basic Info */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Name</h3>
-                  <p className="text-xl font-bold text-white leading-tight">{selectedDoc.name}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Status</h3>
-                  <StatusBadge status={selectedDoc.status} />
-                </div>
-              </div>
-
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1.5">Created</h3>
-                  <p className="text-sm text-zinc-300 font-medium">{formatDate(selectedDoc.date_created)}</p>
-                </div>
-                <div>
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1.5">Modified</h3>
-                  <p className="text-sm text-zinc-300 font-medium">{formatDate(selectedDoc.date_modified)}</p>
-                </div>
-              </div>
-
-              {/* Metadata */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div>
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Created By</h3>
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-900 border border-zinc-800">
-                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-zinc-500">
-                      {selectedDoc.created_by?.email?.[0]?.toUpperCase() || '?'}
+      {/* Document Details Side Panel */}
+      <AnimatePresence>
+        {selectedDoc && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedDoc(null)}
+              className="absolute inset-0 bg-gray-900/20 backdrop-blur-[2px]"
+            />
+            
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="relative w-full max-w-lg bg-white h-full shadow-[-20px_0_50px_rgba(0,0,0,0.05)] border-l border-gray-100 flex flex-col"
+            >
+              <div className="p-8 flex-1 overflow-y-auto">
+                <div className="flex items-start justify-between mb-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-[#E1F5EE] flex items-center justify-center text-[#1D9E75] shrink-0">
+                      {loadingSelected ? (
+                        <RefreshCw className="w-7 h-7 animate-spin" />
+                      ) : (
+                        <FileText className="w-7 h-7" />
+                      )}
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {selectedDoc.created_by?.first_name || 'Unknown'} {selectedDoc.created_by?.last_name || ''}
-                      </p>
-                      <p className="text-xs text-zinc-500">{selectedDoc.created_by?.email || 'No email'}</p>
+                    <div className="min-w-0">
+                      <h3 className="text-xl font-bold text-gray-900 tracking-tight truncate">{selectedDoc.name}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <StatusBadge status={selectedDoc.status} size="sm" />
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">ID: {selectedDoc.id.slice(0, 8)}...</span>
+                      </div>
                     </div>
                   </div>
+                  <button 
+                    onClick={() => setSelectedDoc(null)}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all shrink-0"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
 
-                <div>
-                  <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Recipients</h3>
-                  <div className="space-y-2">
-                    {selectedDoc.recipients?.map((recipient: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-zinc-900 border border-zinc-800 group hover:border-zinc-700 transition-all">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">
-                            {recipient.first_name} {recipient.last_name}
+                {loadingSelected ? (
+                  <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                    <div className="w-10 h-10 border-4 border-[#1D9E75]/20 border-t-[#1D9E75] rounded-full animate-spin" />
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fetching document details...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <section className="space-y-6">
+                      <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-50 pb-2">Information</h4>
+                      <div className="grid grid-cols-1 gap-6">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                            <Calendar className="w-3 h-3" /> Created Date
                           </p>
-                          <p className="text-xs text-zinc-500 truncate">{recipient.email}</p>
-                          <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider mt-0.5">{recipient.role}</p>
+                          <p className="text-sm font-bold text-gray-800">
+                            {new Date(selectedDoc.date_created).toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 ml-4">
-                          {recipient.has_completed ? (
-                            <div className="flex items-center gap-1.5 text-emerald-500">
-                              <span className="text-[10px] font-bold uppercase tracking-widest">Signed</span>
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
+                        
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                            <RefreshCw className="w-3 h-3" /> Last Updated
+                          </p>
+                          <p className="text-sm font-bold text-gray-800">
+                            {new Date(selectedDoc.date_modified).toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="space-y-6">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-50 pb-2">Recipients ({getRecipients(selectedDoc).length})</h4>
+                    <div className="space-y-3">
+                      {getRecipients(selectedDoc).length > 0 ? (
+                        getRecipients(selectedDoc).map((recipient, i) => (
+                          <div key={i} className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100 group hover:bg-white hover:shadow-md transition-all duration-300">
+                            <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#1D9E75] border border-gray-100 shadow-sm group-hover:border-[#1D9E75]/20">
+                              <Mail className="w-5 h-5" />
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-zinc-600 font-bold uppercase tracking-widest">
-                              <span className="text-[10px]">Pending</span>
-                              <div className="w-3 h-3 rounded-full border border-zinc-700" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-gray-900 truncate">{recipient.email || 'No email provided'}</p>
+                              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
+                                {recipient.first_name || recipient.last_name 
+                                  ? `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() 
+                                  : recipient.role || 'Recipient'}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No recipients found</p>
+                          </div>
+                          {selectedDoc.created_by && (
+                            <div className="space-y-3">
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Document Creator</p>
+                              <div className="flex items-center gap-3 p-4 bg-[#E1F5EE]/30 rounded-2xl border border-[#1D9E75]/10 group hover:bg-white hover:shadow-md transition-all duration-300">
+                                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#1D9E75] border border-gray-100 shadow-sm group-hover:border-[#1D9E75]/20">
+                                  <User className="w-5 h-5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-gray-900 truncate">{selectedDoc.created_by.email}</p>
+                                  <p className="text-[10px] text-[#1D9E75] font-black uppercase tracking-tighter">Admin / Owner</p>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {selectedDoc.expiration_date && (
-                  <div>
-                    <h3 className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1.5">Expiration</h3>
-                    <p className="text-sm text-red-400 font-medium">{formatDate(selectedDoc.expiration_date)}</p>
+                      )}
+                    </div>
+                  </section>
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="p-6 bg-zinc-900/50 backdrop-blur-md border-t border-zinc-800">
-              <button 
-                onClick={() => setSelectedDoc(null)}
-                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all active:scale-95"
-              >
-                Close Details
-              </button>
-            </div>
+              <div className="p-8 bg-gray-50/50 border-t border-gray-100 flex flex-col gap-3">
+                <a 
+                  href={`https://app.pandadoc.com/a/#/documents/${selectedDoc.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-3 h-14 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-black rounded-2xl shadow-xl shadow-[#1D9E75]/20 transition-all uppercase tracking-widest"
+                >
+                  Open in PandaDoc
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button 
+                  onClick={() => setSelectedDoc(null)}
+                  className="w-full h-14 bg-white border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 text-sm font-black rounded-2xl transition-all uppercase tracking-widest shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
 export default Documents
+

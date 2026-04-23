@@ -128,7 +128,7 @@ func (s *pandaDocService) GetDocuments(ctx context.Context, userID, apiKey strin
 	var response struct {
 		Results []interface{} `json:"results"`
 	}
-	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents?count=50&page=1", nil, &response)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents?count=50&page=1&expand=recipients,metadata", nil, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s *pandaDocService) GetDocuments(ctx context.Context, userID, apiKey strin
 
 func (s *pandaDocService) GetDocumentDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id, nil, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id+"/details", nil, &result)
 	return result, err
 }
 

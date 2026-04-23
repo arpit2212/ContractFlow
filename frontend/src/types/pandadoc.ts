@@ -17,6 +17,7 @@ export interface PandaDocDocument {
   date_modified: string
   expiration_date: string | null
   recipients?: PandaDocRecipient[]
+  metadata?: Record<string, string>
   created_by?: {
     email: string
     first_name: string

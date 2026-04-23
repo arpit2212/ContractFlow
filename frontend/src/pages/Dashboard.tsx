@@ -1,25 +1,33 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { signOut } from '../services/auth'
 import Sidebar from '../components/Sidebar'
-import { usePandaDocAnalytics } from '../hooks/usePandaDoc'
+import { usePandaDocAnalytics, usePandaDocDocuments } from '../hooks/usePandaDoc'
 import { usePandaDocApiKey } from '../hooks/usePandaDocApiKey'
+import { motion } from 'framer-motion'
+import { 
+  Key, 
+  Eye, 
+  EyeOff, 
+  Trash2, 
+  CheckCircle2, 
+  Clock, 
+  FileStack,
+  AlertCircle,
+  ExternalLink,
+  Send,
+  FileText,
+  Activity,
+  ChevronRight
+} from 'lucide-react'
 
 const Dashboard: React.FC = () => {
   const { user, loading } = useAuth()
-  const { analytics, loading: analyticsLoading, error: analyticsError } = usePandaDocAnalytics()
+  const { analytics, loading: analyticsLoading } = usePandaDocAnalytics()
+  const { documents, loading: documentsLoading } = usePandaDocDocuments()
   const { apiKey, isConfigured, setApiKey, removeApiKey } = usePandaDocApiKey()
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
-
-  const handleSignOut = async () => {
-    try {
-      await signOut()
-    } catch (err) {
-      console.error('Error signing out:', err)
-    }
-  }
 
   const handleSaveApiKey = (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,206 +39,260 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
-        <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f2f2f2]">
+        <div className="w-10 h-10 border-4 border-[#1D9E75]/20 border-t-[#1D9E75] rounded-full animate-spin" />
       </div>
     )
   }
 
+  const cardVariants = {
+    hover: { 
+      y: -8,
+      transition: { duration: 0.3, ease: "easeOut" }
+    }
+  }
+
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
+    <div className="flex h-screen bg-[#f2f2f2] text-gray-900 overflow-hidden font-sans">
       <Sidebar />
 
-      <main className="flex-1 flex flex-col overflow-y-auto bg-zinc-950">
-        <nav className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10 px-6">
-          <div className="flex justify-end h-16 items-center">
-            <button
-              onClick={handleSignOut}
-              className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-        </nav>
-
-        <div className="max-w-7xl mx-auto w-full px-6 py-12 space-y-12">
-          {/* Profile Section */}
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-8 shadow-xl">
-            <div className="flex items-center gap-6">
-              {user?.user_metadata?.avatar_url ? (
-                <img
-                  src={user.user_metadata.avatar_url}
-                  alt="Avatar"
-                  className="w-20 h-20 rounded-full border-2 border-zinc-800"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-zinc-800 flex items-center justify-center text-2xl font-bold text-zinc-400">
-                  {user?.email?.[0].toUpperCase()}
-                </div>
-              )}
-              <div>
-                <h2 className="text-3xl font-bold text-white mb-1">
-                  Welcome, {user?.user_metadata?.full_name || 'User'}
-                </h2>
-                <p className="text-zinc-400">{user?.email}</p>
-              </div>
+      <main className="flex-1 flex flex-col overflow-y-auto">
+        <div className="max-w-7xl mx-auto w-full px-8 py-6 space-y-8">
+          {/* Welcome Header */}
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center justify-between"
+          >
+            <div>
+              <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+                Welcome back, <span className="text-[#1D9E75]">{user?.user_metadata?.full_name?.split(' ')[0] || 'User'}</span>
+              </h2>
+              <p className="text-gray-400 text-sm font-medium">Monitor your document lifecycle and vault activity.</p>
             </div>
-          </div>
+          </motion.div>
 
-          {/* PandaDoc API Key Section */}
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-8 shadow-xl">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-xl font-bold text-white mb-1">PandaDoc API Key</h3>
-                <p className="text-zinc-500 text-sm">Your API key is stored locally and never sent to our servers</p>
-              </div>
-              {isConfigured && (
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                  <span className="text-sm font-medium">Configured</span>
-                </div>
-              )}
-            </div>
-
-            {isConfigured ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-4 p-4 bg-zinc-950 rounded-xl border border-zinc-800">
-                  <div className="flex-1">
-                    <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider mb-1">API Key</p>
-                    <p className="text-white font-mono text-sm">
-                      {showApiKey ? apiKey : '••••••••' + apiKey.slice(-4)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-all"
-                    >
-                      {showApiKey ? 'Hide' : 'Show'}
-                    </button>
-                    <button
-                      onClick={removeApiKey}
-                      className="px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-                <p className="text-zinc-600 text-xs">
-                  Your session will expire in 30 minutes. After that, you will need to sign in again.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSaveApiKey} className="space-y-4">
-                <div>
-                  <label className="block text-zinc-400 text-sm font-medium mb-2">
-                    Enter your PandaDoc API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="Paste your API key here..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600/50 transition-all"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!apiKeyInput.trim()}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-sm font-bold rounded-xl transition-all"
-                >
-                  Save API Key
-                </button>
-                <p className="text-zinc-600 text-xs text-center">
-                  Get your API key from{' '}
-                  <a
-                    href="https://app.pandadoc.com/api/overview"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300"
-                  >
-                    PandaDoc API Settings
-                  </a>
-                </p>
-              </form>
-            )}
-          </div>
-
-          {/* PandaDoc Section */}
-          {!isConfigured && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6">
-              <div className="flex items-center gap-3">
-                <svg className="w-6 h-6 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <p className="text-amber-200 text-sm">
-                  Please add your PandaDoc API key above to enable document features.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-6">
-            <div className="flex justify-between items-end">
-              <h3 className="text-xl font-bold text-white">PandaDoc Overview</h3>
-              <Link
-                to="/documents"
-                className="text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+          {/* Metric Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { 
+                label: 'Total Vault Documents', 
+                value: analytics?.total, 
+                icon: <FileStack className="w-6 h-6" />, 
+                color: 'blue', 
+                accent: 'bg-blue-500',
+                shadow: 'hover:shadow-blue-500/10'
+              },
+              { 
+                label: 'Completed & Signed', 
+                value: analytics?.completed, 
+                icon: <CheckCircle2 className="w-6 h-6" />, 
+                color: 'teal', 
+                accent: 'bg-[#1D9E75]',
+                shadow: 'hover:shadow-[#1D9E75]/10'
+              },
+              { 
+                label: 'Pending Requirements', 
+                value: (analytics?.total ?? 0) - (analytics?.completed ?? 0), 
+                icon: <Clock className="w-6 h-6" />, 
+                color: 'amber', 
+                accent: 'bg-amber-500',
+                shadow: 'hover:shadow-amber-500/10'
+              }
+            ].map((stat, idx) => (
+              <motion.div
+                key={stat.label}
+                variants={cardVariants}
+                whileHover="hover"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className={`bg-white rounded-[2rem] p-8 border border-white shadow-[0_10px_30px_rgba(0,0,0,0.03)] flex flex-col gap-6 relative overflow-hidden group transition-shadow ${stat.shadow} hover:shadow-2xl`}
               >
-                View All Documents →
-              </Link>
+                <div className={`absolute top-0 left-0 w-full h-1.5 ${stat.accent}`} />
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-gray-50 text-gray-400 group-hover:bg-[#E1F5EE] group-hover:text-[#1D9E75] transition-all duration-300`}>
+                  {stat.icon}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                  <p className="text-3xl font-black text-gray-900">
+                    {!isConfigured ? '—' : (analyticsLoading ? '...' : stat.value)}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            {/* PandaDoc API Key Section */}
+            <div className="lg:col-span-2 space-y-8">
+              <motion.div 
+                whileHover={{ y: -5 }}
+                className="bg-white rounded-[2.5rem] border border-white p-10 shadow-[0_10px_40px_rgba(0,0,0,0.03)] hover:shadow-2xl transition-all duration-300"
+              >
+                <div className="flex items-center justify-between mb-10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-[#E1F5EE] rounded-2xl">
+                      <Key className="w-6 h-6 text-[#1D9E75]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-extrabold text-gray-900">Vault Integration</h3>
+                      <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">PandaDoc Secure API</p>
+                    </div>
+                  </div>
+                  {isConfigured && (
+                    <span className="flex items-center gap-2 px-4 py-1.5 bg-green-50 text-green-700 text-[10px] font-black rounded-full border border-green-100 uppercase tracking-widest">
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      Encrypted & Active
+                    </span>
+                  )}
+                </div>
+
+                {isConfigured ? (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between group">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Access Token</p>
+                        <p className="text-gray-900 font-mono text-xs tracking-tighter bg-white px-3 py-1 rounded-lg border border-gray-100">
+                          {showApiKey ? apiKey : '••••••••••••••••••••' + apiKey.slice(-6)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="p-2 text-gray-400 hover:text-[#1D9E75] hover:bg-white rounded-lg border border-transparent hover:border-gray-100 transition-all shadow-sm"
+                        >
+                          {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={removeApiKey}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition-all shadow-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-blue-50/30 rounded-xl border border-blue-100/30">
+                      <div className="p-1.5 bg-white rounded-md shadow-sm">
+                        <AlertCircle className="w-3.5 h-3.5 text-blue-500" />
+                      </div>
+                      <p className="text-[10px] text-blue-700/70 leading-relaxed font-bold">
+                        Security Notice: Your API key is hashed and stored in your local vault. It is never transmitted or visible to our backend systems.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSaveApiKey} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-1">
+                        Production API Key
+                      </label>
+                      <input
+                        type="password"
+                        value={apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                        placeholder="Paste your PandaDoc production key..."
+                        className="w-full h-11 bg-gray-50 border border-gray-200 rounded-xl px-4 text-xs focus:outline-none focus:ring-4 focus:ring-[#1D9E75]/5 focus:border-[#1D9E75] transition-all font-medium"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!apiKeyInput.trim()}
+                      className="w-full h-11 bg-[#1D9E75] hover:bg-[#0F6E56] disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-[10px] font-black rounded-xl shadow-lg shadow-[#1D9E75]/10 transition-all uppercase tracking-widest"
+                    >
+                      Authorize Connection
+                    </button>
+                    <p className="text-gray-400 text-[10px] text-center font-bold uppercase tracking-widest">
+                      Missing your key?{' '}
+                      <a
+                        href="https://app.pandadoc.com/a/#/api-dashboard/configuration"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#1D9E75] hover:underline"
+                      >
+                        Visit PandaDoc Settings
+                      </a>
+                    </p>
+                  </form>
+                )}
+              </motion.div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {!isConfigured ? (
-                <>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 opacity-50">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Total Docs</h4>
-                    <p className="text-5xl font-bold text-zinc-600">—</p>
+            {/* Recent Activity / Side Card */}
+            <div className="space-y-8">
+              <motion.div 
+                whileHover={{ y: -5 }}
+                className="bg-white rounded-[2.5rem] border border-white p-8 shadow-[0_10px_40px_rgba(0,0,0,0.03)] hover:shadow-2xl transition-all duration-300"
+              >
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <Activity className="w-5 h-5 text-[#1D9E75]" />
+                    <h3 className="font-extrabold text-gray-900 tracking-tight">Recent Activity</h3>
                   </div>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 opacity-50">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Completed</h4>
-                    <p className="text-5xl font-bold text-zinc-600">—</p>
-                  </div>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 opacity-50">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Pending</h4>
-                    <p className="text-5xl font-bold text-zinc-600">—</p>
-                  </div>
-                </>
-              ) : analyticsLoading ? (
-                [...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl animate-pulse">
-                    <div className="h-4 w-24 bg-zinc-800 rounded mb-4" />
-                    <div className="h-10 w-12 bg-zinc-800 rounded" />
-                  </div>
-                ))
-              ) : analyticsError ? (
-                <div className="col-span-3 bg-zinc-900 border border-zinc-800 p-8 rounded-2xl text-center">
-                  <p className="text-zinc-500 font-medium italic">PandaDoc analytics unavailable</p>
+                  <Link to="/documents" className="text-[10px] font-black text-[#1D9E75] uppercase tracking-widest hover:text-[#0F6E56]">View All</Link>
                 </div>
-              ) : (
-                <>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 group hover:border-blue-500/50 transition-colors">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Total Docs</h4>
-                    <p className="text-5xl font-bold text-white group-hover:text-blue-400 transition-colors">
-                      {analytics?.total}
-                    </p>
-                  </div>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 group hover:border-emerald-500/50 transition-colors">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Completed</h4>
-                    <p className="text-5xl font-bold text-white group-hover:text-emerald-400 transition-colors">
-                      {analytics?.completed}
-                    </p>
-                  </div>
-                  <div className="p-8 bg-zinc-900 rounded-2xl border border-zinc-800 group hover:border-amber-500/50 transition-colors">
-                    <h4 className="text-zinc-500 text-sm font-bold uppercase tracking-wider mb-4">Pending</h4>
-                    <p className="text-5xl font-bold text-white group-hover:text-amber-400 transition-colors">
-                      {(analytics?.total ?? 0) - (analytics?.completed ?? 0)}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
+                
+                <div className="space-y-6">
+                  {analyticsLoading || documentsLoading ? (
+                    [...Array(3)].map((_, i) => (
+                      <div key={i} className="flex gap-4 animate-pulse">
+                        <div className="w-12 h-12 bg-gray-100 rounded-2xl shrink-0" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3 bg-gray-100 rounded w-3/4" />
+                          <div className="h-2 bg-gray-50 rounded w-1/2" />
+                        </div>
+                      </div>
+                    ))
+                  ) : !isConfigured ? (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FileStack className="w-8 h-8 text-gray-200" />
+                      </div>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-widest italic">No activity logs</p>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FileStack className="w-8 h-8 text-gray-200" />
+                      </div>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-widest italic">No documents found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {documents.slice(0, 3).map((doc) => {
+                        const statusLabel = doc.status.replace('document.', '').replace('_', ' ')
+                        const timeStr = new Date(doc.date_created).toLocaleDateString()
+                        
+                        return (
+                          <div key={doc.id} className="flex items-center gap-4 group cursor-pointer p-2 rounded-2xl hover:bg-gray-50 transition-colors">
+                            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-[#E1F5EE] group-hover:text-[#1D9E75] transition-all">
+                              <FileText className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#1D9E75] transition-colors">{doc.name}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                                  doc.status === 'document.completed' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                                }`}>
+                                  {statusLabel}
+                                </span>
+                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">• {timeStr}</span>
+                                {(doc.recipients?.[0]?.email || doc.metadata?.primary_recipient) && (
+                                  <span className="text-[9px] text-gray-400 font-medium truncate max-w-[120px]">
+                                    • {doc.recipients?.[0]?.email || doc.metadata?.primary_recipient}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              </div>
           </div>
         </div>
       </main>

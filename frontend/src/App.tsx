@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Documents from './pages/Documents'
+import Templates from './pages/Templates'
 import SendContract from './pages/SendContract'
 import BulkSend from './pages/BulkSend'
 
@@ -43,6 +44,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Documents />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates"
+          element={
+            <ProtectedRoute>
+              <Templates />
             </ProtectedRoute>
           }
         />
