@@ -34,7 +34,7 @@ Users can:
 ## 🔗 Architecture Diagram
 
 
-- ![Dashboard Screenshot]([https://your-image-link.com/image.png](https://github.com/arpit2212/ContractFlow/blob/main/ReadDocs/architecture.drawio.png))
+- ![Dashboard Screenshot](https://github.com/arpit2212/ContractFlow/blob/main/ReadDocs/architecture.drawio.png))
 
 ---
 
@@ -275,7 +275,7 @@ root/
 
 ### ▶️ Backend Setup (Go)
 
-```bash
+
 cd backend
 
 go mod tidy
