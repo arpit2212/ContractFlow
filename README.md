@@ -1,9 +1,5 @@
 # 📄 PandaDoc Service Web App – Deccan Vault
 
-**Version:** 1.0.0  
-**Date:** 29-04-2026  
-**Status:** Project Overview Draft  
-
 ---
 
 ## 🚀 Tech Stack
@@ -38,7 +34,7 @@ Users can:
 ## 🔗 Architecture Diagram
 
 
-- Architecture Diagram: *(Add link here)*  
+- ![Dashboard Screenshot]([https://your-image-link.com/image.png](https://github.com/arpit2212/ContractFlow/blob/main/ReadDocs/architecture.drawio.png))
 
 ---
 
