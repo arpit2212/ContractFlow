@@ -250,7 +250,7 @@ const Dashboard: React.FC = () => {
                       </div>
                       <p className="text-xs text-gray-400 font-bold uppercase tracking-widest italic">No activity logs</p>
                     </div>
-                  ) : documents.length === 0 ? (
+                  ) : (documents || []).length === 0 ? (
                     <div className="text-center py-12">
                       <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                         <FileStack className="w-8 h-8 text-gray-200" />
@@ -259,7 +259,7 @@ const Dashboard: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {documents.slice(0, 3).map((doc) => {
+                      {(documents || []).slice(0, 3).map((doc) => {
                         const statusLabel = doc.status.replace('document.', '').replace('_', ' ')
                         const timeStr = new Date(doc.date_created).toLocaleDateString()
                         

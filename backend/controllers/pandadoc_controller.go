@@ -1,7 +1,10 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/ContractFlow/backend/services"
@@ -26,7 +29,11 @@ func (ctrl *PandaDocController) getID(c *gin.Context) string {
 }
 
 func (ctrl *PandaDocController) getAPIKey(c *gin.Context) string {
-	return c.GetHeader("X-PandaDoc-Api-Key")
+	apiKey := c.GetHeader("X-PandaDoc-Api-Key")
+	if apiKey == "" {
+		apiKey = c.GetHeader("x-pandadoc-api-key")
+	}
+	return strings.TrimSpace(apiKey)
 }
 
 func (ctrl *PandaDocController) GetDocuments(c *gin.Context) {
@@ -36,12 +43,37 @@ func (ctrl *PandaDocController) GetDocuments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "PandaDoc API key is required. Please add your API key in settings."})
 		return
 	}
-	docs, err := ctrl.Service.GetDocuments(c.Request.Context(), userID, apiKey)
+
+	page := 1
+	limit := 25
+	refresh := c.Query("refresh") == "true"
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	log.Printf("Controller: GetDocuments for user %s (page=%d, limit=%d, refresh=%v)", userID, page, limit, refresh)
+	docs, total, err := ctrl.Service.GetDocuments(c.Request.Context(), userID, apiKey, page, limit, refresh)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("Controller: GetDocuments error: %v", err)
+		if strings.Contains(err.Error(), "invalid PandaDoc API key") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Your PandaDoc API key is invalid. Please update it in settings."})
+			return
+		}
+		if strings.Contains(err.Error(), "403 Forbidden") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Your PandaDoc API key does not have permission to list documents. Please check your PandaDoc API settings."})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Backend Error: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, docs)
+	c.JSON(http.StatusOK, gin.H{"documents": docs, "total": total, "page": page, "limit": limit})
 }
 
 func (ctrl *PandaDocController) GetDocumentDetails(c *gin.Context) {
@@ -201,12 +233,23 @@ func (ctrl *PandaDocController) GetAnalytics(c *gin.Context) {
 	userID := ctrl.getID(c)
 	apiKey := ctrl.getAPIKey(c)
 	if apiKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "PandaDoc API key is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "PandaDoc API key is required. Please add your API key in settings."})
 		return
 	}
+
+	log.Printf("Controller: GetAnalytics for user %s", userID)
 	analytics, err := ctrl.Service.GetAnalytics(c.Request.Context(), userID, apiKey)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("Controller: GetAnalytics error: %v", err)
+		if strings.Contains(err.Error(), "invalid PandaDoc API key") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Your PandaDoc API key is invalid. Please update it in settings."})
+			return
+		}
+		if strings.Contains(err.Error(), "403 Forbidden") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Your PandaDoc API key does not have permission to access analytics/documents. Please check your PandaDoc API settings."})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Backend Error: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, analytics)

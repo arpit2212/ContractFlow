@@ -74,7 +74,7 @@ const Login: React.FC = () => {
         >
           <div className="flex items-center gap-2 px-4 py-1.5 bg-white/80 backdrop-blur-sm border border-gray-100 rounded-full shadow-sm">
             <ShieldCheck className="w-4 h-4 text-[#1D9E75]" />
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Enterprise Grade Security</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Panda Doc Automator</span>
           </div>
         </motion.div>
 
@@ -178,7 +178,7 @@ const Login: React.FC = () => {
           variants={itemVariants}
           className="text-center mt-8 text-[11px] font-bold text-gray-400 uppercase tracking-widest"
         >
-          &copy; 2026 Deccan Vault Systems
+         
         </motion.p>
       </motion.div>
     </div>

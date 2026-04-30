@@ -48,7 +48,8 @@ const PANDADOC_BASE = '/pandadoc'
 
 export const pandaDocAPI = {
   getStatus: () => api.get(`${PANDADOC_BASE}/status`),
-  getDocuments: () => api.get(`${PANDADOC_BASE}/documents`),
+  getDocuments: (page = 1, limit = 25, refresh = false) => 
+    api.get(`${PANDADOC_BASE}/documents?page=${page}&limit=${limit}${refresh ? '&refresh=true' : ''}`),
   getDocumentDetails: (id: string) => api.get(`${PANDADOC_BASE}/documents/${id}`),
   getTemplates: () => api.get(`${PANDADOC_BASE}/templates`),
   getTemplateDetails: (id: string) => api.get(`${PANDADOC_BASE}/templates/${id}/details`),

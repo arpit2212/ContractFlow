@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ type PandaDocAnalytics struct {
 }
 
 type PandaDocServiceInterface interface {
-	GetDocuments(ctx context.Context, userID, apiKey string) ([]interface{}, error)
+	GetDocuments(ctx context.Context, userID, apiKey string, page, limit int, bypassCache bool) ([]interface{}, int, error)
 	GetDocumentDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error)
 	GetTemplates(ctx context.Context, userID, apiKey string) ([]interface{}, error)
 	GetTemplateDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error)
@@ -101,7 +102,10 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, apiKey, method,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("PandaDoc Request failed: %v", err)
 		return err
@@ -113,38 +117,148 @@ func (s *pandaDocService) doRequest(ctx context.Context, userID, apiKey, method,
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
 		log.Printf("PandaDoc API Error Status: %d, Body: %s", resp.StatusCode, string(respBody))
-		return fmt.Errorf("PandaDoc API Error: %s", string(respBody))
+
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("invalid PandaDoc API key")
+		}
+		if resp.StatusCode == http.StatusForbidden {
+			return fmt.Errorf("PandaDoc API key does not have permission for this action (403 Forbidden)")
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("PandaDoc endpoint not found (404 Not Found): %s", path)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("PandaDoc API rate limit exceeded (429 Too Many Requests)")
+		}
+
+		return fmt.Errorf("PandaDoc API Error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
-	return json.NewDecoder(resp.Body).Decode(result)
+	// Read body for logging and decoding
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Log a snippet of the response for debugging
+	bodySnippet := string(respBody)
+	if len(bodySnippet) > 200 {
+		bodySnippet = bodySnippet[:200] + "..."
+	}
+	log.Printf("PandaDoc Response Body (%d bytes): %s", len(respBody), bodySnippet)
+
+	if len(respBody) == 0 {
+		log.Printf("PandaDoc: Empty response body for %s", path)
+		return nil
+	}
+
+	err = json.Unmarshal(respBody, result)
+	if err != nil {
+		// Try to see if it's a simple list when we expected an object or vice versa
+		log.Printf("PandaDoc: Failed to decode response into expected type: %v. Body: %s", err, string(respBody))
+		return fmt.Errorf("failed to decode PandaDoc response: %v", err)
+	}
+
+	return nil
 }
 
-func (s *pandaDocService) GetDocuments(ctx context.Context, userID, apiKey string) ([]interface{}, error) {
-	cacheKey := fmt.Sprintf("docs_%s", userID)
-	if data, ok := s.getFromCache(cacheKey); ok {
-		return data.([]interface{}), nil
+func (s *pandaDocService) GetDocuments(ctx context.Context, userID, apiKey string, page, limit int, bypassCache bool) ([]interface{}, int, error) {
+	// Include a hash of the API key in the cache key
+	apiKeyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(apiKey)))
+	cacheKey := fmt.Sprintf("docs_%s_%s_page%d_limit%d", userID, apiKeyHash[:8], page, limit)
+
+	if !bypassCache {
+		if data, ok := s.getFromCache(cacheKey); ok {
+			cached := data.(map[string]interface{})
+			return cached["items"].([]interface{}), cached["total"].(int), nil
+		}
 	}
 
-	var response struct {
-		Results []interface{} `json:"results"`
-	}
-	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents?count=50&page=1&expand=recipients,metadata", nil, &response)
+	log.Printf("PandaDoc: Fetching documents for user %s, page %d, limit %d", userID, page, limit)
+
+	// We try to decode into a generic map first
+	var rawResponse map[string]interface{}
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, fmt.Sprintf("/documents?count=%d&page=%d", limit, page), nil, &rawResponse)
+
 	if err != nil {
-		return nil, err
+		log.Printf("PandaDoc: GetDocuments first attempt (map) failed: %v", err)
+		// Fallback: Check if the response is actually a direct list
+		var directList []interface{}
+		if fallbackErr := s.doRequest(ctx, userID, apiKey, http.MethodGet, fmt.Sprintf("/documents?count=%d&page=%d", limit, page), nil, &directList); fallbackErr == nil {
+			log.Printf("PandaDoc: Detected direct list response (%d items)", len(directList))
+			s.setToCache(cacheKey, map[string]interface{}{"items": directList, "total": len(directList)})
+			return directList, len(directList), nil
+		} else {
+			log.Printf("PandaDoc: GetDocuments fallback attempt (list) also failed: %v", fallbackErr)
+		}
+		return nil, 0, err
 	}
 
-	s.setToCache(cacheKey, response.Results)
-	return response.Results, nil
+	keys := getMapKeys(rawResponse)
+	log.Printf("PandaDoc: GetDocuments successful response. Keys found: %v", keys)
+
+	// Try to find results in common keys
+	var results []interface{}
+	var ok bool
+
+	if results, ok = rawResponse["results"].([]interface{}); !ok {
+		if results, ok = rawResponse["items"].([]interface{}); !ok {
+			if results, ok = rawResponse["documents"].([]interface{}); !ok {
+				// If still not found, check if any key contains a list
+				for k, v := range rawResponse {
+					if list, ok := v.([]interface{}); ok {
+						results = list
+						log.Printf("PandaDoc: Found potential results in key '%s'", k)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if results != nil {
+		total := 0
+		if count, ok := rawResponse["count"].(float64); ok {
+			total = int(count)
+		} else if totalInt, ok := rawResponse["total_count"].(float64); ok {
+			total = int(totalInt)
+		} else if totalInt, ok := rawResponse["total"].(float64); ok {
+			total = int(totalInt)
+		}
+
+		if total < len(results) {
+			total = len(results)
+		}
+
+		log.Printf("PandaDoc: Returning %d documents (total: %d)", len(results), total)
+		s.setToCache(cacheKey, map[string]interface{}{"items": results, "total": total})
+		return results, total, nil
+	}
+
+	log.Printf("PandaDoc: No results found in response. Keys: %v", keys)
+	return []interface{}{}, 0, nil
+}
+
+// Helper to log map keys for debugging
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (s *pandaDocService) GetDocumentDetails(ctx context.Context, userID, apiKey, id string) (interface{}, error) {
 	var result interface{}
-	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id+"/details", nil, &result)
+	err := s.doRequest(ctx, userID, apiKey, http.MethodGet, "/documents/"+id, nil, &result)
 	return result, err
 }
 
 func (s *pandaDocService) GetTemplates(ctx context.Context, userID, apiKey string) ([]interface{}, error) {
-	cacheKey := fmt.Sprintf("templates_%s", userID)
+	// Include a hash of the API key in the cache key
+	apiKeyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(apiKey)))
+	cacheKey := fmt.Sprintf("templates_%s_%s", userID, apiKeyHash[:8])
+
 	if data, ok := s.getFromCache(cacheKey); ok {
 		return data.([]interface{}), nil
 	}
@@ -264,7 +378,7 @@ func (s *pandaDocService) BulkCreateAndSendDocuments(ctx context.Context, userID
 }
 
 func (s *pandaDocService) GetAnalytics(ctx context.Context, userID, apiKey string) (*PandaDocAnalytics, error) {
-	docs, err := s.GetDocuments(ctx, userID, apiKey)
+	docs, _, err := s.GetDocuments(ctx, userID, apiKey, 1, 100, false)
 	if err != nil {
 		return nil, err
 	}

@@ -40,9 +40,10 @@ const Templates: React.FC = () => {
   }
 
   const filteredTemplates = useMemo(() => {
-    if (!searchQuery) return templates
-    return templates.filter((template) => 
-      template.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const safeTemplates = templates || []
+    if (!searchQuery) return safeTemplates
+    return safeTemplates.filter((template) => 
+      template?.name?.toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [templates, searchQuery])
 

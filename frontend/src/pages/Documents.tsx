@@ -12,6 +12,7 @@ import {
   RefreshCw, 
   Link as LinkIcon, 
   ChevronRight,
+  ChevronLeft,
   FileText,
   AlertCircle,
   X,
@@ -24,7 +25,10 @@ import type { PandaDocDocument } from '../types/pandadoc'
 import StatusBadge from '../components/StatusBadge'
 
 const Documents: React.FC = () => {
-  const { documents, loading: docsLoading, error: docsError, refetch: refetchDocs } = usePandaDocDocuments()
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 25
+  
+  const { documents, total, loading: docsLoading, error: docsError, refetch: refetchDocs } = usePandaDocDocuments(currentPage, itemsPerPage)
   const { analytics, loading: analyticsLoading, error: analyticsError, refetch: refetchAnalytics } = usePandaDocAnalytics()
   
   const [searchParams, setSearchParams] = useSearchParams()
@@ -33,6 +37,11 @@ const Documents: React.FC = () => {
   const [connecting, setConnecting] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<PandaDocDocument | null>(null)
   const [loadingSelected, setLoadingSelected] = useState(false)
+
+  // Reset to first page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filter, searchQuery])
 
   // Helper to safely get recipients array
   const getRecipients = (doc: any): PandaDocRecipient[] => {
@@ -86,13 +95,13 @@ const Documents: React.FC = () => {
   }
 
   const filteredDocuments = useMemo(() => {
-    let filtered = documents
+    let filtered = documents || []
     if (filter !== 'all') {
-      filtered = filtered.filter((doc) => doc.status === `document.${filter}`)
+      filtered = filtered.filter((doc) => doc?.status === `document.${filter}`)
     }
     if (searchQuery) {
       filtered = filtered.filter((doc) => 
-        doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+        doc?.name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     }
     return filtered
@@ -116,7 +125,7 @@ const Documents: React.FC = () => {
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => {
-                  refetchDocs()
+                  refetchDocs(true)
                   refetchAnalytics()
                 }}
                 className="p-2 text-gray-400 hover:text-[#1D9E75] hover:bg-gray-50 rounded-lg transition-all"
@@ -125,7 +134,7 @@ const Documents: React.FC = () => {
                 <RefreshCw className={`w-5 h-5 ${docsLoading ? 'animate-spin' : ''}`} />
               </button>
               <div className="px-3 py-1.5 bg-[#E1F5EE] text-[#1D9E75] rounded-full text-xs font-bold border border-[#1D9E75]/10">
-                {documents.length} Total
+                {total} Total
               </div>
             </div>
           </div>
@@ -185,7 +194,72 @@ const Documents: React.FC = () => {
                     Try Again
                   </button>
                 </div>
-              ) : filteredDocuments.length === 0 ? (
+              ) : (docsLoading || filteredDocuments.length > 0) ? (
+                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                  <DocumentsTable 
+                    documents={filteredDocuments} 
+                    loading={docsLoading} 
+                    onViewDetails={handleViewDetails}
+                  />
+                  
+                  {/* Pagination Controls */}
+                  {total > itemsPerPage && !docsLoading && (
+                    <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                      <div className="text-sm text-gray-500 font-medium">
+                        Showing <span className="text-gray-900">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-gray-900">{Math.min(currentPage * itemsPerPage, total)}</span> of <span className="text-gray-900">{total}</span> documents
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1 || docsLoading}
+                          className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, Math.ceil(total / itemsPerPage)) }, (_, i) => {
+                            const totalPages = Math.ceil(total / itemsPerPage);
+                            let pageNum = currentPage;
+                            
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => setCurrentPage(pageNum)}
+                                className={`w-10 h-10 rounded-lg text-sm font-bold transition-all ${
+                                  currentPage === pageNum
+                                    ? 'bg-[#1D9E75] text-white shadow-md shadow-[#1D9E75]/20'
+                                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.min(Math.ceil(total / itemsPerPage), prev + 1))}
+                          disabled={currentPage === Math.ceil(total / itemsPerPage) || docsLoading}
+                          className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <div className="bg-white border border-gray-100 rounded-2xl p-20 text-center shadow-sm">
                   <div className="w-20 h-20 bg-gray-50 text-gray-300 rounded-full flex items-center justify-center mx-auto mb-6">
                     <FileText className="w-10 h-10" />
@@ -194,14 +268,6 @@ const Documents: React.FC = () => {
                   <p className="text-gray-500 max-w-sm mx-auto mb-8 font-medium">
                     {searchQuery && `We couldn't find any documents matching "${searchQuery}"`}
                   </p>
-                </div>
-              ) : (
-                <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                  <DocumentsTable 
-                    documents={filteredDocuments} 
-                    loading={docsLoading} 
-                    onViewDetails={handleViewDetails}
-                  />
                 </div>
               )}
             </motion.div>
